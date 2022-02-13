@@ -45,6 +45,8 @@ PSECT udata_shr			; Memoria compartida
     W_TEMP:		DS 1	
     STATUS_TEMP:	DS 1
     CUENTA:		DS 1
+    UNIDADES:		DS 1
+    DECENAS:		DS 1
 
 PSECT resVect, class=CODE, abs, delta=2
 ORG 00h				; posición 0000h para el reset
@@ -84,22 +86,47 @@ FUNC_INT_TMR0:
     SUBLW   50		;W-50
     BTFSS   STATUS,2
     RETURN
-    INCF    PORTD
+    INCF    PORTB
+    INCF    UNIDADES
     CLRF    CUENTA
     RETURN
 
 FUNC_INT_IOCB:
     BANKSEL PORTB
-    BTFSS   PORTB,0
+    BTFSS   PORTB,6
     INCF    PORTA
-    BTFSS   PORTB,1
+    BTFSS   PORTB,7
     DECF    PORTA
     BCF	    RBIF
     RETURN
     
 PSECT code, delta=2, abs
 ORG 100h		    ; posición 100h para el codigo
-;------------- CONFIGURACION ------------
+;------------- TABLA ------------
+TABLA:
+    CLRF    PCLATH	; Limpiar PCLATH
+    BSF	    PCLATH,0	; PCLATH = 01	PC = 02
+    ANDLW   0x0F	; Solo permitir valores iguales o menores a 0x0F
+    ADDWF   PCL,F	; PC = PCLATH + PCL + W
+    ;HGFEDCBA		
+    RETLW   00111111B	; 0
+    RETLW   00000110B	; 1
+    RETLW   01011011B	; 2
+    RETLW   01001111B	; 3
+    RETLW   01100110B	; 4
+    RETLW   01101101B	; 5
+    RETLW   01111101B	; 6
+    RETLW   00000111B	; 7
+    RETLW   01111111B	; 8
+    RETLW   01100111B	; 9
+    RETLW   01110111B	; A
+    RETLW   01111100B	; B
+    RETLW   00111001B	; C
+    RETLW   01011110B	; D
+    RETLW   01111001B	; E
+    RETLW   01110001B	; F
+ 
+ ;------------- CONFIGURACION ------------
 MAIN:
     CALL    CONFIG_IO	    ; Configuración de I/O
     CALL    CONFIG_RELOJ    ; Configuración de Oscilador (4MHz)
@@ -110,9 +137,34 @@ MAIN:
     
 LOOP:
     ; Código que se va a estar ejecutando mientras no hayan interrupciones
+    CALL    CHECK_UNI
+    CALL    CHECK_DEC
+    MOVF    UNIDADES,W
+    CALL    TABLA
+    MOVWF   PORTD
+    MOVF    DECENAS,W
+    CALL    TABLA
+    MOVWF   PORTC
     GOTO    LOOP	    
     
 ;------------- SUBRUTINAS ---------------
+CHECK_UNI:
+    MOVF    UNIDADES,W	;W=UNIDADES
+    SUBLW   10		;W-10 = UNIDADES - 10
+    BTFSS   STATUS,2
+    RETURN
+    INCF    DECENAS
+    CLRF    UNIDADES
+    RETURN
+    
+CHECK_DEC:
+    MOVF    DECENAS,W	;W=DECENAS
+    SUBLW   6		;W-6 = DECENAS - 10
+    BTFSS   STATUS,2
+    RETURN
+    CLRF    DECENAS
+    RETURN
+
 CONFIG_TMR0:
     BANKSEL OPTION_REG	    ; cambiamos de banco
     BCF	    T0CS	    ; TMR0 como temporizador
@@ -120,9 +172,6 @@ CONFIG_TMR0:
     BSF	    PS2
     BSF	    PS1
     BSF	    PS0		    ; PS<2:0> -> 111 prescaler 1 : 256
-    
-    /*RESET_TMR0 178
-    RETURN*/
     
     BANKSEL TMR0	    ; cambiamos de banco
     MOVLW   178
@@ -132,7 +181,7 @@ CONFIG_TMR0:
     
 CONFIG_IOCB:
     BANKSEL IOCB
-    MOVLW   0x03	    
+    MOVLW   0xC0   
     MOVWF   IOCB
     
     BANKSEL PORTA
@@ -156,17 +205,19 @@ CONFIG_RELOJ:
     BANKSEL TRISA
     MOVLW   0xF0
     MOVWF   TRISA	    ; PORTA como salida
-    MOVLW   0xF0
-    MOVWF   TRISD	    ; PORTD como salida
-    MOVLW   0xFF	    
-    MOVWF   TRISB	    ; PORTB como entradas
+    MOVLW   0xF0	    
+    MOVWF   TRISB	    ; PORTB como entradas y salidas
+    CLRF    TRISC
+    CLRF    TRISD
     BCF	    OPTION_REG,7    ; PORTB pull-ups are enabled
-    MOVLW   0x03	    
+    MOVLW   0xC0	    
     MOVWF   WPUB	    ; 
     
     
     BANKSEL PORTA
     CLRF    PORTA	    ; Apagamos PORTD
+    CLRF    PORTB
+    CLRF    PORTC
     CLRF    PORTD
     RETURN
     
