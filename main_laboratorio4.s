@@ -1,4 +1,14 @@
-PROCESSOR 16F887
+;Archivo:	main_laboratorio4.s
+;Dispositivo:	PIC16F887
+;Autor:		Luis Garrido
+;Compilador:	pic-as (v2.30), MPLABX V5.40
+;
+;Programa:	Contador de 4 bits en el puerto A
+;Hardware:	Leds en el puerto A, Botones en RB0 y RB1
+;Creado: 06 feb, 2022 
+;Última modificación: 10 feb, 2022
+    
+    PROCESSOR 16F887
 ; PIC16F887 Configuration Bit Settings
 ; Assembly source line config statements
 
