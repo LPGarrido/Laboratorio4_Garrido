@@ -33,17 +33,18 @@
   
 ; -------------- MACROS --------------- 
 
-/*RESET_TMR0 MACRO TMR_VAR
+RESET_TMR0 MACRO TMR_VAR
     BANKSEL TMR0	    ; cambiamos de banco
     MOVLW   TMR_VAR
     MOVWF   TMR0	    ; configuramos tiempo de retardo
     BCF	    T0IF	    ; limpiamos bandera de interrupción
-    ENDM */
+    ENDM 
   
 ; ------- VARIABLES EN MEMORIA --------
 PSECT udata_shr			; Memoria compartida
     W_TEMP:		DS 1	
     STATUS_TEMP:	DS 1
+    CUENTA:		DS 1
 
 PSECT resVect, class=CODE, abs, delta=2
 ORG 00h				; posición 0000h para el reset
@@ -63,6 +64,9 @@ PUSH:
 ISR:
     BTFSC   RBIF	    ; Bandera  
     CALL    FUNC_INT_IOCB
+    BTFSC   T0IF
+    CALL    FUNC_INT_TMR0
+    
     
     
 POP:
@@ -73,6 +77,17 @@ POP:
     RETFIE		    ; Regresamos a ciclo principal
     
 ;------SUBRUTINAS DE INTERRUPCION----------
+FUNC_INT_TMR0:
+    RESET_TMR0 178
+    INCF    CUENTA
+    MOVF    CUENTA,W	;W=CUENTA
+    SUBLW   50		;W-50
+    BTFSS   STATUS,2
+    RETURN
+    INCF    PORTD
+    CLRF    CUENTA
+    RETURN
+
 FUNC_INT_IOCB:
     BANKSEL PORTB
     BTFSS   PORTB,0
@@ -89,6 +104,7 @@ MAIN:
     CALL    CONFIG_IO	    ; Configuración de I/O
     CALL    CONFIG_RELOJ    ; Configuración de Oscilador (4MHz)
     CALL    CONFIG_IOCB	    ; Configuración de INTERRUPT-ON-CHANGE PORTB
+    CALL    CONFIG_TMR0
     CALL    CONFIG_INT	    ; Configuración de interrupciones
     BANKSEL PORTD	    ; Cambio a banco 00
     
@@ -97,6 +113,23 @@ LOOP:
     GOTO    LOOP	    
     
 ;------------- SUBRUTINAS ---------------
+CONFIG_TMR0:
+    BANKSEL OPTION_REG	    ; cambiamos de banco
+    BCF	    T0CS	    ; TMR0 como temporizador
+    BCF	    PSA		    ; prescaler a TMR0
+    BSF	    PS2
+    BSF	    PS1
+    BSF	    PS0		    ; PS<2:0> -> 111 prescaler 1 : 256
+    
+    /*RESET_TMR0 178
+    RETURN*/
+    
+    BANKSEL TMR0	    ; cambiamos de banco
+    MOVLW   178
+    MOVWF   TMR0	    ; 20ms retardo
+    BCF	    T0IF	    ; limpiamos bandera de interrupción
+    RETURN
+    
 CONFIG_IOCB:
     BANKSEL IOCB
     MOVLW   0x03	    
@@ -123,6 +156,8 @@ CONFIG_RELOJ:
     BANKSEL TRISA
     MOVLW   0xF0
     MOVWF   TRISA	    ; PORTA como salida
+    MOVLW   0xF0
+    MOVWF   TRISD	    ; PORTD como salida
     MOVLW   0xFF	    
     MOVWF   TRISB	    ; PORTB como entradas
     BCF	    OPTION_REG,7    ; PORTB pull-ups are enabled
@@ -132,6 +167,7 @@ CONFIG_RELOJ:
     
     BANKSEL PORTA
     CLRF    PORTA	    ; Apagamos PORTD
+    CLRF    PORTD
     RETURN
     
 CONFIG_INT:
@@ -139,6 +175,8 @@ CONFIG_INT:
     BSF	    GIE		    ; Habilitamos interrupciones
     BSF	    RBIE	    ; Habilitamos interrupcion PORTB Change Interrupt
     BCF	    RBIF	    ; Limpiamos bandera de PORTB Change Interrupt 
+    BSF	    T0IE	    ; Habilitamos interrupcion TMR0
+    BCF	    T0IF	    ; Limpiamos bandera de TMR0
     RETURN
     
 END
