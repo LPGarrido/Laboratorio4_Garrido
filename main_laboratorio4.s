@@ -3,7 +3,7 @@
 ;Autor:		Luis Garrido
 ;Compilador:	pic-as (v2.30), MPLABX V5.40
 ;
-;Programa:	Contador de 4 bits en el PORTA, Contador de segundos en el PORTB, Display que muestra en conteo de segundos
+;Programa:	Contador de 4 bits, Contador de segundos, Display que muestra en conteo de segundos
 ;Hardware:	Leds en el PORTA y PORTB (bit 0 a 3), Botones RB6 y RB7; Display en paralelo PORTC con conexión al RD0 y RD1
 ;Creado: 06 feb, 2022 
 ;Última modificación: 10 feb, 2022
@@ -273,14 +273,14 @@ MOSTRAR_VALORES:
     DISPLAY_0:
 	MOVF    DISPLAY,W   ;W = DISPLAY
 	MOVWF   PORTC	    ;PORTC = DISPLAY
-	BSF	PORTD,1	    ;RD1=1 - prepara el siguiente turno para que se muestre el DISPLAY_1
+	BSF	PORTD,1	    ;RD1=1 
 	BSF	BANDERAS,0  ;BANDERAS0=1 - para que cuando regrese ejecute luego el DISPLAY_1
 	RETURN
 
     DISPLAY_1:
 	MOVF    DISPLAY+1,W ;W = DISPLAY+1
 	MOVWF   PORTC	    ;PORTC = DISPLAY+1
-	BSF	PORTD,0	    ;RD0=1 - prepara el siguiente turno para que se muestre el DISPLAY_0
+	BSF	PORTD,0	    ;RD0=1
 	BCF	BANDERAS,0  ;BANDERAS0=0 - para que cuando regrese ejecute luego el DISPLAY_0
 	RETURN
     
