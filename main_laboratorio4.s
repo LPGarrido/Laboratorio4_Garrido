@@ -15,14 +15,14 @@
 ; CONFIG1
   CONFIG  FOSC = INTRC_NOCLKOUT ; Oscillator Selection bits (INTOSCIO oscillator: I/O function on RA6/OSC2/CLKOUT pin, I/O function on RA7/OSC1/CLKIN)
   CONFIG  WDTE = OFF            ; Watchdog Timer Enable bit (WDT disabled and can be enabled by SWDTEN bit of the WDTCON register)
-  CONFIG  PWRTE = ON            ; Power-up Timer Enable bit (PWRT enabled)
+  CONFIG  PWRTE = OFF            ; Power-up Timer Enable bit (PWRT enabled)
   CONFIG  MCLRE = OFF           ; RE3/MCLR pin function select bit (RE3/MCLR pin function is digital input, MCLR internally tied to VDD)
   CONFIG  CP = OFF              ; Code Protection bit (Program memory code protection is disabled)
   CONFIG  CPD = OFF             ; Data Code Protection bit (Data memory code protection is disabled)
   CONFIG  BOREN = OFF           ; Brown Out Reset Selection bits (BOR disabled)
   CONFIG  IESO = OFF            ; Internal External Switchover bit (Internal/External Switchover mode is disabled)
   CONFIG  FCMEN = OFF           ; Fail-Safe Clock Monitor Enabled bit (Fail-Safe Clock Monitor is disabled)
-  CONFIG  LVP = ON              ; Low Voltage Programming Enable bit (RB3/PGM pin has PGM function, low voltage programming enabled)
+  CONFIG  LVP = OFF             ; Low Voltage Programming Enable bit (RB3/PGM pin has PGM function, low voltage programming enabled)
 
 ; CONFIG2
   CONFIG  BOR4V = BOR40V        ; Brown-out Reset Selection bit (Brown-out Reset set to 4.0V)
@@ -44,9 +44,15 @@ RESET_TMR0 MACRO TMR_VAR
 PSECT udata_shr			; Memoria compartida
     W_TEMP:		DS 1	
     STATUS_TEMP:	DS 1
+    
+PSECT udata_bank0
     CUENTA:		DS 1
     UNIDADES:		DS 1
     DECENAS:		DS 1
+    VALOR:		DS 1
+    BANDERAS:		DS 1
+    NIBBLES:		DS 2
+    DISPLAY:		DS 2
 
 PSECT resVect, class=CODE, abs, delta=2
 ORG 00h				; posición 0000h para el reset
@@ -69,8 +75,6 @@ ISR:
     BTFSC   T0IF
     CALL    FUNC_INT_TMR0
     
-    
-    
 POP:
     SWAPF   STATUS_TEMP, W  
     MOVWF   STATUS	    ; Recuperamos el valor de reg STATUS
@@ -81,6 +85,7 @@ POP:
 ;------SUBRUTINAS DE INTERRUPCION----------
 FUNC_INT_TMR0:
     RESET_TMR0 178
+    CALL    MOSTRAR_VALORES
     INCF    CUENTA
     MOVF    CUENTA,W	;W=CUENTA
     SUBLW   50		;W-50
@@ -103,7 +108,7 @@ FUNC_INT_IOCB:
 PSECT code, delta=2, abs
 ORG 100h		    ; posición 100h para el codigo
 ;------------- TABLA ------------
-TABLA:
+TABLA_7SEG:
     CLRF    PCLATH	; Limpiar PCLATH
     BSF	    PCLATH,0	; PCLATH = 01	PC = 02
     ANDLW   0x0F	; Solo permitir valores iguales o menores a 0x0F
@@ -139,12 +144,16 @@ LOOP:
     ; Código que se va a estar ejecutando mientras no hayan interrupciones
     CALL    CHECK_UNI
     CALL    CHECK_DEC
-    MOVF    UNIDADES,W
-    CALL    TABLA
-    MOVWF   PORTD
-    MOVF    DECENAS,W
-    CALL    TABLA
-    MOVWF   PORTC
+    
+    MOVF    DECENAS,W	;W = DECENAS (0-6)
+    MOVWF   VALOR	;VALOR = DECENAS (0-6) - 0000 (Num 0 al 6)
+    SWAPF   VALOR	;VALOR = (Num 0 al 6) 0000
+    MOVF    UNIDADES,W	;W = UNIDADES
+    ADDWF   VALOR	;W = (Num 0 al 6) (Num 0 al 9)
+    
+    CALL    OBTENER_NIBBLE
+    CALL    SET_DISPLAY
+    
     GOTO    LOOP	    
     
 ;------------- SUBRUTINAS ---------------
@@ -208,7 +217,8 @@ CONFIG_RELOJ:
     MOVLW   0xF0	    
     MOVWF   TRISB	    ; PORTB como entradas y salidas
     CLRF    TRISC
-    CLRF    TRISD
+    MOVLW   0xFC
+    MOVWF   TRISD
     BCF	    OPTION_REG,7    ; PORTB pull-ups are enabled
     MOVLW   0xC0	    
     MOVWF   WPUB	    ; 
@@ -218,7 +228,6 @@ CONFIG_RELOJ:
     CLRF    PORTA	    ; Apagamos PORTD
     CLRF    PORTB
     CLRF    PORTC
-    CLRF    PORTD
     RETURN
     
 CONFIG_INT:
@@ -229,6 +238,52 @@ CONFIG_INT:
     BSF	    T0IE	    ; Habilitamos interrupcion TMR0
     BCF	    T0IF	    ; Limpiamos bandera de TMR0
     RETURN
+   
+    
+OBTENER_NIBBLE:		    ;VALOR = 0110 1101
+    MOVLW   0x0F	    ;W = 0000 1111
+    ANDWF   VALOR,W	    ;AND Valor y W = 0000 Nibble_bajo
+    MOVWF   NIBBLES	    ;Guardar valor en NIBBLES
+    
+    MOVLW   0xF0	    ;W = 1111 0000
+    ANDWF   VALOR,W	    ;AND Valor y W = Nibble_alto 0000
+    MOVWF   NIBBLES+1	    ;Guardar valor en NIBBLES+1
+    SWAPF   NIBBLES+1	    ;NIBBLES+1 = 0000 Nibble_alto
+    RETURN
+    
+SET_DISPLAY:
+    MOVF    NIBBLES,W	    ;W = NIBBLES
+    CALL    TABLA_7SEG	    ;Llamar la tabla de 7seg
+    MOVWF   DISPLAY	    ;DISPLAY = valor con el que regresa la tabla
+    
+    MOVF    NIBBLES+1,W	    ;W = NIBBLES+1
+    CALL    TABLA_7SEG	    ;Llamar la tabla de 7seg
+    MOVWF   DISPLAY+1	    ;DISPLAY+1 = alor con el que regresa la tabla
+    
+    RETURN
+    
+MOSTRAR_VALORES:    
+    BCF	    PORTD,0	    ;Limpiar RD0
+    BCF	    PORTD,1	    ;Limpiar RD1
+    BTFSC   BANDERAS,0	    ;Si Banderas0=1, GOTO DISPLAY_1; si Banderas0=0 DISPLAY_0
+    GOTO    DISPLAY_1
+    ;GOTO    DISPLAY_0
+    
+    DISPLAY_0:
+	MOVF    DISPLAY,W   ;W = DISPLAY
+	MOVWF   PORTC	    ;PORTC = DISPLAY
+	BSF	PORTD,1	    ;RD1=1 - prepara el siguiente turno para que se muestre el DISPLAY_1
+	BSF	BANDERAS,0  ;BANDERAS0=1 - para que cuando regrese ejecute luego el DISPLAY_1
+	RETURN
+
+    DISPLAY_1:
+	MOVF    DISPLAY+1,W ;W = DISPLAY+1
+	MOVWF   PORTC	    ;PORTC = DISPLAY+1
+	BSF	PORTD,0	    ;RD0=1 - prepara el siguiente turno para que se muestre el DISPLAY_0
+	BCF	BANDERAS,0  ;BANDERAS0=0 - para que cuando regrese ejecute luego el DISPLAY_0
+	RETURN
+    
+    
     
 END
 
