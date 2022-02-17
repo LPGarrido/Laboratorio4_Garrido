@@ -3,12 +3,12 @@
 ;Autor:		Luis Garrido
 ;Compilador:	pic-as (v2.30), MPLABX V5.40
 ;
-;Programa:	Contador de 4 bits en el puerto A
-;Hardware:	Leds en el puerto A, Botones en RB0 y RB1
+;Programa:	Contador de 4 bits en el PORTA, Contador de segundos en el PORTB, Display que muestra en conteo de segundos
+;Hardware:	Leds en el PORTA y PORTB (bit 0 a 3), Botones RB6 y RB7; Display en paralelo PORTC con conexión al RD0 y RD1
 ;Creado: 06 feb, 2022 
 ;Última modificación: 10 feb, 2022
     
-    PROCESSOR 16F887
+PROCESSOR 16F887
 ; PIC16F887 Configuration Bit Settings
 ; Assembly source line config statements
 
@@ -35,8 +35,8 @@
 
 RESET_TMR0 MACRO TMR_VAR
     BANKSEL TMR0	    ; cambiamos de banco
-    MOVLW   TMR_VAR
-    MOVWF   TMR0	    ; configuramos tiempo de retardo
+    MOVLW   TMR_VAR	    ; 
+    MOVWF   TMR0	    ; TMR0= TMR_VAR - configuramos tiempo de retardo
     BCF	    T0IF	    ; limpiamos bandera de interrupción
     ENDM 
   
@@ -45,14 +45,14 @@ PSECT udata_shr			; Memoria compartida
     W_TEMP:		DS 1	
     STATUS_TEMP:	DS 1
     
-PSECT udata_bank0
-    CUENTA:		DS 1
-    UNIDADES:		DS 1
-    DECENAS:		DS 1
-    VALOR:		DS 1
-    BANDERAS:		DS 1
-    NIBBLES:		DS 2
-    DISPLAY:		DS 2
+PSECT udata_bank0		; Memoria en el bank0
+    CUENTA:		DS 1	; CUENTA para el contador de int del tmr0
+    UNIDADES:		DS 1	; UNIDADES de los segundos
+    DECENAS:		DS 1	; DECENAS de los segundos
+    VALOR:		DS 1	; VALOR a mostrar
+    BANDERAS:		DS 1	; BANDERAS
+    NIBBLES:		DS 2	; NIBBLES alto y bajo del valor a mostrar
+    DISPLAY:		DS 2	; DISPLAY - valores a colocar en el display
 
 PSECT resVect, class=CODE, abs, delta=2
 ORG 00h				; posición 0000h para el reset
@@ -70,10 +70,10 @@ PUSH:
     MOVWF   STATUS_TEMP	    ; Guardamos STATUS
     
 ISR:
-    BTFSC   RBIF	    ; Bandera  
-    CALL    FUNC_INT_IOCB
-    BTFSC   T0IF
-    CALL    FUNC_INT_TMR0
+    BTFSC   RBIF	    ; RBIF=1 FUNC_INT_IOCB; RBIF=0 Evaluar
+    CALL    FUNC_INT_IOCB   ; Funcion INT IOCB
+    BTFSC   T0IF	    ; T0IF=1 FUNC_INT_TMR0; T0IF=0 Recuperar W y STATUS
+    CALL    FUNC_INT_TMR0   ; Funcion INT TMR0
     
 POP:
     SWAPF   STATUS_TEMP, W  
@@ -84,25 +84,25 @@ POP:
     
 ;------SUBRUTINAS DE INTERRUPCION----------
 FUNC_INT_TMR0:
-    RESET_TMR0 178
-    CALL    MOSTRAR_VALORES
-    INCF    CUENTA
-    MOVF    CUENTA,W	;W=CUENTA
-    SUBLW   50		;W-50
-    BTFSS   STATUS,2
-    RETURN
-    INCF    PORTB
-    INCF    UNIDADES
-    CLRF    CUENTA
-    RETURN
+    RESET_TMR0 178	    ;Resetear TMR0 con un valor de 178
+    CALL    MOSTRAR_VALORES ;MOSTRAR VALORES en el display
+    INCF    CUENTA	    ;Incrementar CUENTA cada vez que se llegue a la int del tmr0
+    MOVF    CUENTA,W	    ;W=CUENTA
+    SUBLW   50		    ;W-50
+    BTFSS   STATUS,2	    ;Si Z=0, RETURN; si Z=1, funcion
+    RETURN		    ;regresa
+    INCF    PORTB	    ;incrementar PORTB
+    INCF    UNIDADES	    ;Incrementar unidades
+    CLRF    CUENTA	    ;Limpiar cuenta
+    RETURN		    ;regresa
 
 FUNC_INT_IOCB:
-    BANKSEL PORTB
-    BTFSS   PORTB,6
-    INCF    PORTA
-    BTFSS   PORTB,7
-    DECF    PORTA
-    BCF	    RBIF
+    BANKSEL PORTB	    ;
+    BTFSS   PORTB,6	    ;Si RB6=0, INCF PORTA; si RB6=1, Evaluar
+    INCF    PORTA	    ;PORTA+1
+    BTFSS   PORTB,7	    ;Si RB7=0, DECF PORTA; si RB7=1, Evaluar
+    DECF    PORTA	    ;PORTA-1
+    BCF	    RBIF	    ;Limpiar la bandera de interupción
     RETURN
     
 PSECT code, delta=2, abs
@@ -136,23 +136,23 @@ MAIN:
     CALL    CONFIG_IO	    ; Configuración de I/O
     CALL    CONFIG_RELOJ    ; Configuración de Oscilador (4MHz)
     CALL    CONFIG_IOCB	    ; Configuración de INTERRUPT-ON-CHANGE PORTB
-    CALL    CONFIG_TMR0
+    CALL    CONFIG_TMR0	    ; Configuración de TMR0
     CALL    CONFIG_INT	    ; Configuración de interrupciones
     BANKSEL PORTD	    ; Cambio a banco 00
     
 LOOP:
     ; Código que se va a estar ejecutando mientras no hayan interrupciones
-    CALL    CHECK_UNI
-    CALL    CHECK_DEC
+    CALL    CHECK_UNI	    ;Chequeo Unidades
+    CALL    CHECK_DEC	    ;Chequeo Decenas
     
-    MOVF    DECENAS,W	;W = DECENAS (0-6)
-    MOVWF   VALOR	;VALOR = DECENAS (0-6) - 0000 (Num 0 al 6)
-    SWAPF   VALOR	;VALOR = (Num 0 al 6) 0000
-    MOVF    UNIDADES,W	;W = UNIDADES
-    ADDWF   VALOR	;W = (Num 0 al 6) (Num 0 al 9)
+    MOVF    DECENAS,W	    ;W = DECENAS (0-6)
+    MOVWF   VALOR	    ;VALOR = DECENAS (0-6) - 0000 (Num 0 al 6)
+    SWAPF   VALOR	    ;VALOR = (Num 0 al 6) 0000
+    MOVF    UNIDADES,W	    ;W = UNIDADES
+    ADDWF   VALOR	    ;VALOR = (Num 0 al 6) (Num 0 al 9)
     
-    CALL    OBTENER_NIBBLE
-    CALL    SET_DISPLAY
+    CALL    OBTENER_NIBBLE  ;Obtener nibbles
+    CALL    SET_DISPLAY	    ;Set Display
     
     GOTO    LOOP	    
     
@@ -160,43 +160,43 @@ LOOP:
 CHECK_UNI:
     MOVF    UNIDADES,W	;W=UNIDADES
     SUBLW   10		;W-10 = UNIDADES - 10
-    BTFSS   STATUS,2
-    RETURN
-    INCF    DECENAS
-    CLRF    UNIDADES
+    BTFSS   STATUS,2	;Si Z=0, regresa; si Z=1 funcion
+    RETURN		;regresa
+    INCF    DECENAS	;incrementar decenas
+    CLRF    UNIDADES	;limpiar unidades
     RETURN
     
 CHECK_DEC:
     MOVF    DECENAS,W	;W=DECENAS
-    SUBLW   6		;W-6 = DECENAS - 10
-    BTFSS   STATUS,2
-    RETURN
-    CLRF    DECENAS
-    RETURN
+    SUBLW   6		;W = DECENAS - 6
+    BTFSS   STATUS,2	;Si Z=0, regresa; si Z=1 funcion
+    RETURN		;regresa
+    CLRF    DECENAS	;limpiar decenas
+    RETURN		;regresa
 
 CONFIG_TMR0:
-    BANKSEL OPTION_REG	    ; cambiamos de banco
-    BCF	    T0CS	    ; TMR0 como temporizador
-    BCF	    PSA		    ; prescaler a TMR0
+    BANKSEL OPTION_REG	; cambiamos de banco
+    BCF	    T0CS	; TMR0 como temporizador
+    BCF	    PSA		; prescaler a TMR0
     BSF	    PS2
     BSF	    PS1
-    BSF	    PS0		    ; PS<2:0> -> 111 prescaler 1 : 256
+    BSF	    PS0		; PS<2:0> -> 111 prescaler 1 : 256
     
-    BANKSEL TMR0	    ; cambiamos de banco
+    BANKSEL TMR0	; cambiamos de banco
     MOVLW   178
-    MOVWF   TMR0	    ; 20ms retardo
-    BCF	    T0IF	    ; limpiamos bandera de interrupción
+    MOVWF   TMR0	; 20ms retardo
+    BCF	    T0IF	; limpiamos bandera de interrupción
     RETURN
     
 CONFIG_IOCB:
     BANKSEL IOCB
-    MOVLW   0xC0   
-    MOVWF   IOCB
+    MOVLW   0xC0	
+    MOVWF   IOCB	;Habilitamos IOC para los bit RB6 y RB7
     
     BANKSEL PORTA
-    MOVF    PORTB,W	    ;Al leer termina la condicion de 'mismatch'
-    BCF	    RBIF
-    RETURN
+    MOVF    PORTB,W	;Al leer termina la condicion de 'mismatch'
+    BCF	    RBIF	;Limpiar la bandera
+    RETURN		;regresar
 
 CONFIG_RELOJ:
     BANKSEL OSCCON	    ; cambiamos a banco 1
@@ -213,21 +213,22 @@ CONFIG_RELOJ:
     
     BANKSEL TRISA
     MOVLW   0xF0
-    MOVWF   TRISA	    ; PORTA como salida
+    MOVWF   TRISA	    ; PORTA como salida (RA0,RA1,RA2,RA3)
     MOVLW   0xF0	    
-    MOVWF   TRISB	    ; PORTB como entradas y salidas
-    CLRF    TRISC
-    MOVLW   0xFC
-    MOVWF   TRISD
+    MOVWF   TRISB	    ; PORTB como entradas (RB6,RB7) y salidas (RB3,RB2,RB1,RB0)
+    CLRF    TRISC	    ; PORTC como salida
+    MOVLW   0xFC	    
+    MOVWF   TRISD	    ; PORTD como salida (RD0,RD1)
     BCF	    OPTION_REG,7    ; PORTB pull-ups are enabled
     MOVLW   0xC0	    
-    MOVWF   WPUB	    ; 
+    MOVWF   WPUB	    ; Habilita RB6 y RB7 los pull-ups internos
     
     
     BANKSEL PORTA
-    CLRF    PORTA	    ; Apagamos PORTD
-    CLRF    PORTB
+    CLRF    PORTA	    ; Apagamos PORTA, PORTB, PORTC, PORTD
+    CLRF    PORTB	    
     CLRF    PORTC
+    CLRF    PORTD
     RETURN
     
 CONFIG_INT:
